@@ -166,24 +166,26 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
 // ==========================================
   // TYPE 1: Brick Type 1 (e.g., Side Walls along X)
   // ==========================================
-  G4double b1_dX = 5.0 * cm;   // Thickness
-  G4double b1_dY = 20.0 * cm;  // Height along Y (vertical)
-  G4double b1_dZ = 22.5 * cm;  // Length along Z
+  G4double b1_dX = 1.0 * 2.54 * cm;   // Thickness
+  G4double b1_dY = 8.0 * 2.54 * cm;  // Height along Y (vertical)
+  G4double b1_dZ = 6.75 * 2.54 * cm;  // Length along Z
 
   auto solidBrickType1 = new G4Box("BrickType1_Solid", 0.5 * b1_dX, 0.5 * b1_dY, 0.5 * b1_dZ);
   auto logicBrickType1 = new G4LogicalVolume(solidBrickType1, lead_mat, "BrickType1_LV");
   logicBrickType1->SetVisAttributes(leadVis);
 
+  double lead1_xoff = 4.0 * 0.5 * 2.54 * cm + b1_dX*0.5; //Distance of thick lead brick from center
+
   // Place Type 1 Bricks on the -X and +X sides
-  new G4PVPlacement(nullptr, G4ThreeVector(-9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_MinusX", logicWorld, false, 0, fCheckOverlaps);
-  new G4PVPlacement(nullptr, G4ThreeVector( 9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_PlusX",  logicWorld, false, 1, fCheckOverlaps);
+  new G4PVPlacement(nullptr, G4ThreeVector(-lead1_xoff, 0.0, 0.0), logicBrickType1, "Brick_MinusX", logicWorld, false, 0, fCheckOverlaps);
+  new G4PVPlacement(nullptr, G4ThreeVector( lead1_xoff, 0.0, 0.0), logicBrickType1, "Brick_PlusX",  logicWorld, false, 1, fCheckOverlaps);
 
   // ==========================================
   // TYPE 2: Brick Type 2 (e.g., Front/Back Walls along Z)
   // ==========================================
-  G4double b2_dX = 14.0 * cm;  // Width
-  G4double b2_dY = 20.0 * cm;  // Height along Y (vertical)
-  G4double b2_dZ = 7.5 * cm;   // Thickness
+  G4double b2_dX = 4.0 * 2.54 * cm;  // Width
+  G4double b2_dY = 8.0 * 2.54 * cm;  // Height along Y (vertical)
+  G4double b2_dZ = 2.0 * 2.54 * cm;   // Thickness
 
   auto solidBrickType2 = new G4Box("BrickType2_Solid", 0.5 * b2_dX, 0.5 * b2_dY, 0.5 * b2_dZ);
   auto logicBrickType2 = new G4LogicalVolume(solidBrickType2, lead_mat, "BrickType2_LV");
@@ -218,15 +220,17 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
   auto logicBrickWithHole = new G4LogicalVolume(solidBrickWithHole, lead_mat, "BrickZ_CylHole_LV");
   logicBrickWithHole->SetVisAttributes(leadVis);
 
+  double lead2_zoff = 3.5*cm + b2_dZ*0.5; //Distance of thick lead brick from center
+
   // Place the perforated bricks along the Z-axis
-  new G4PVPlacement(nullptr,G4ThreeVector(0.0, 0.0, -7.5 * cm),logicBrickWithHole,"LeadBrick_Z_CylHole", 
+  new G4PVPlacement(nullptr,G4ThreeVector(0.0, 0.0, -lead2_zoff),logicBrickWithHole,"LeadBrick_Z_CylHole", 
                     logicWorld, 
                     false, 
                     2, 
                     fCheckOverlaps);
 
   new G4PVPlacement(nullptr, 
-                    G4ThreeVector(0.0, 0.0, 7.5 * cm), 
+                    G4ThreeVector(0.0, 0.0, lead2_zoff), 
                     logicBrickWithHole, 
                     "LeadBrick_Z_CylHole", 
                     logicWorld, 
