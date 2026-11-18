@@ -41,6 +41,7 @@
 #include "G4SystemOfUnits.hh"
 #include "G4Transform3D.hh"
 #include "G4Tubs.hh"
+#include "G4SubtractionSolid.hh"
 #include "G4VisAttributes.hh"
 
 namespace B3
@@ -69,6 +70,42 @@ void DetectorConstruction::DefineMaterials()
   LSO->AddElement(Lu, 2);
   LSO->AddElement(Si, 1);
   LSO->AddElement(O, 5);
+
+  //New materials start here
+
+  //CeBr3
+  G4Element* Ce = man->FindOrBuildElement("Ce", isotopes);
+  G4Element* Br = man->FindOrBuildElement("Br", isotopes);
+
+  auto CeBr3 = new G4Material("CeBr3", 5.10 * g / cm3, 2);
+  CeBr3->AddElement(Ce, 1);
+  CeBr3->AddElement(Br, 3);
+
+  //USE UNDOPED NaI, CAN REVISIT LATER
+  //NaI(Tl) (normal NaI does not have dopant)
+  //G4Element* Na = man->FindOrBuildElement("Na", isotopes);
+  //G4Element* I = man->FindOrBuildElement("I", isotopes);
+  //G4Element* Tl = man->FindOrBuildElement("Tl", isotopes);
+
+  //auto NaITl = new G4Material("NaI(Tl)", 3.67 * g / cm3, 2);
+  //NaITl->AddElement(Na, 1);
+  //NaITl->AddElement(I, 3);
+  //NaITl->AddElement(Br, 3);
+
+  //BC408
+  G4Element* H = man->FindOrBuildElement("H", isotopes);
+  G4Element* C = man->FindOrBuildElement("C", isotopes);
+
+  auto BC408 = new G4Material("BC408", 1.023 * g / cm3, 2);
+
+  BC408->AddElement(C, 0.915206); //use mass fractions
+  BC408->AddElement(H, 0.084794);
+
+  auto pterph = new G4Material("pterph", 1.23 * g / cm3, 2);
+
+  pterph->AddElement(C, 0.9387); //use mass fractions
+  pterph->AddElement(H, 0.0613);
+
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -90,15 +127,22 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   //
   G4double detector_dZ = nb_rings * cryst_dX;
   //
-  G4NistManager* nist = G4NistManager::Instance();
+  G4NistManager* nist = G4NistManager::Instance(); //Instantiates the NIST finder
   G4Material* default_mat = nist->FindOrBuildMaterial("G4_AIR");
   G4Material* cryst_mat = nist->FindOrBuildMaterial("Lu2SiO5");
+
+  //Get materials for our project
+  G4Material* lead_mat = nist->FindOrBuildMaterial("G4_Pb"); //lead
+  //G4Material* mount = nist->FindOrBuildMaterial(); //plastic mounting piece (TODO get material) 
+  G4Material* cryst_analysis = nist->FindOrBuildMaterial("G4_SODIUM_IODIDE"); //NaI (don't need to include Tl)
+  G4Material* cryst_scatt = nist->FindOrBuildMaterial("CeBr3"); //NaI (don't need to include Tl)
+
 
   //
   // World
   //
-  G4double world_sizeXY = 2.4 * ring_R2;
-  G4double world_sizeZ = 1.2 * detector_dZ;
+  G4double world_sizeXY = 100 * cm; //100 cm world size (length of side)
+  G4double world_sizeZ = 100 * cm; //100 cm world size (length of side)
 
   auto solidWorld =
     new G4Box("World",  // its name
@@ -116,6 +160,80 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                      false,  // no boolean operation
                                      0,  // copy number
                                      fCheckOverlaps);  // checking overlaps
+
+auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
+
+// ==========================================
+  // TYPE 1: Brick Type 1 (e.g., Side Walls along X)
+  // ==========================================
+  G4double b1_dX = 5.0 * cm;   // Thickness
+  G4double b1_dY = 20.0 * cm;  // Height along Y (vertical)
+  G4double b1_dZ = 22.5 * cm;  // Length along Z
+
+  auto solidBrickType1 = new G4Box("BrickType1_Solid", 0.5 * b1_dX, 0.5 * b1_dY, 0.5 * b1_dZ);
+  auto logicBrickType1 = new G4LogicalVolume(solidBrickType1, lead_mat, "BrickType1_LV");
+  logicBrickType1->SetVisAttributes(leadVis);
+
+  // Place Type 1 Bricks on the -X and +X sides
+  new G4PVPlacement(nullptr, G4ThreeVector(-9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_MinusX", logicWorld, false, 0, fCheckOverlaps);
+  new G4PVPlacement(nullptr, G4ThreeVector( 9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_PlusX",  logicWorld, false, 1, fCheckOverlaps);
+
+  // ==========================================
+  // TYPE 2: Brick Type 2 (e.g., Front/Back Walls along Z)
+  // ==========================================
+  G4double b2_dX = 14.0 * cm;  // Width
+  G4double b2_dY = 20.0 * cm;  // Height along Y (vertical)
+  G4double b2_dZ = 7.5 * cm;   // Thickness
+
+  auto solidBrickType2 = new G4Box("BrickType2_Solid", 0.5 * b2_dX, 0.5 * b2_dY, 0.5 * b2_dZ);
+  auto logicBrickType2 = new G4LogicalVolume(solidBrickType2, lead_mat, "BrickType2_LV");
+  logicBrickType2->SetVisAttributes(leadVis);
+
+
+  // Define the Cylindrical "Cutter" for the hole
+  // Arguments for G4Tubs: name, innerRadius, outerRadius, halfZ, startAngle, spanAngle
+  G4double holeRadius = 1.0 * cm; 
+  G4double holeHalfZ  = (b2_dZ / 2.) * 1.5; // Make this slightly thicker than the brick's half-thickness (3.75 cm) to avoid surface artifacts
+  
+  auto solidCylHole = new G4Tubs("CylHole", 
+                                 0.0,            // Inner radius (solid cylinder)
+                                 holeRadius,     // Outer radius
+                                 holeHalfZ,      // Half-length along Z
+                                 0.0,            // Starting phi angle
+                                 360.0 * deg);   // Full circle span
+
+  // Rotate the Cylinder Cutter so its length aligns with the Z-axis
+  // By default, G4Tubs extrudes along the Z-axis, which matches our brick thickness direction.
+  G4RotationMatrix* noRot = nullptr;
+  G4ThreeVector holeOffset(0.0, 0.0, 0.0);
+
+  // Perform the Subtraction: Brick minus Cylinder
+  auto solidBrickWithHole = new G4SubtractionSolid("BrickZ_WithCylHole", 
+                                                    solidBrickType2, 
+                                                    solidCylHole, 
+                                                    noRot, 
+                                                    holeOffset);
+
+  // Wrap into a Logical Volume and Place It
+  auto logicBrickWithHole = new G4LogicalVolume(solidBrickWithHole, lead_mat, "BrickZ_CylHole_LV");
+  logicBrickWithHole->SetVisAttributes(leadVis);
+
+  // Place the perforated bricks along the Z-axis
+  new G4PVPlacement(nullptr,G4ThreeVector(0.0, 0.0, -7.5 * cm),logicBrickWithHole,"LeadBrick_Z_CylHole", 
+                    logicWorld, 
+                    false, 
+                    2, 
+                    fCheckOverlaps);
+
+  new G4PVPlacement(nullptr, 
+                    G4ThreeVector(0.0, 0.0, 7.5 * cm), 
+                    logicBrickWithHole, 
+                    "LeadBrick_Z_CylHole", 
+                    logicWorld, 
+                    false, 
+                    2, 
+                    fCheckOverlaps);
+
 
   //
   // ring
@@ -137,7 +255,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                         cryst_mat,  // its material
                                         "CrystalLV");  // its name
 
-  // place crystals within a ring
+/*  // place crystals within a ring
   //
   for (G4int icrys = 0; icrys < nb_cryst; icrys++) {
     G4double phi = icrys * dPhi;
@@ -192,7 +310,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                     logicWorld,  // its mother  volume
                     false,  // no boolean operation
                     0,  // copy number
-                    fCheckOverlaps);  // checking overlaps
+                    fCheckOverlaps);  // checking overlaps*/
 
   //
   // patient
@@ -221,8 +339,18 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
   // Visualization attributes
   //
-  logicRing->SetVisAttributes(G4VisAttributes::GetInvisible());
-  logicDetector->SetVisAttributes(G4VisAttributes::GetInvisible());
+  //logicRing->SetVisAttributes(G4VisAttributes::GetInvisible());
+  //logicDetector->SetVisAttributes(G4VisAttributes::GetInvisible());
+
+  logicWorld->SetVisAttributes(G4VisAttributes::GetInvisible()); //make world invisible
+
+  // Create visibility attributes for the world
+  auto worldVis = new G4VisAttributes(G4Colour(0.5, 0.5, 0.5)); // Gray wireframe color
+  worldVis->SetVisibility(true);
+  worldVis->SetForceWireframe(true); // Forces it to render as lines only, never solid
+  
+  // Apply it to your world logical volume
+  logicWorld->SetVisAttributes(worldVis);
 
   // Print materials
   G4cout << *(G4Material::GetMaterialTable()) << G4endl;
