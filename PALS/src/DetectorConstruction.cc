@@ -133,6 +133,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
   //Get materials for our project
   G4Material* lead_mat = nist->FindOrBuildMaterial("G4_Pb"); //lead
+  G4Material* al_mat    = nist->FindOrBuildMaterial("G4_Al");
+  G4Material* glass_mat = nist->FindOrBuildMaterial("G4_SILICON_DIOXIDE"); //Assume for PMTs
   //G4Material* mount = nist->FindOrBuildMaterial(); //plastic mounting piece (TODO get material) 
   G4Material* cryst_analysis = nist->FindOrBuildMaterial("G4_SODIUM_IODIDE"); //NaI (don't need to include Tl)
   G4Material* cryst_scatt = nist->FindOrBuildMaterial("CeBr3"); //NaI (don't need to include Tl)
@@ -166,24 +168,26 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
 // ==========================================
   // TYPE 1: Brick Type 1 (e.g., Side Walls along X)
   // ==========================================
-  G4double b1_dX = 5.0 * cm;   // Thickness
-  G4double b1_dY = 20.0 * cm;  // Height along Y (vertical)
-  G4double b1_dZ = 22.5 * cm;  // Length along Z
+  G4double b1_dX = 1.0 * 2.54 * cm;   // Thickness
+  G4double b1_dY = 8.0 * 2.54 * cm;  // Height along Y (vertical)
+  G4double b1_dZ = 5.5 * 2.54 * cm;  // Length along Z
 
   auto solidBrickType1 = new G4Box("BrickType1_Solid", 0.5 * b1_dX, 0.5 * b1_dY, 0.5 * b1_dZ);
   auto logicBrickType1 = new G4LogicalVolume(solidBrickType1, lead_mat, "BrickType1_LV");
   logicBrickType1->SetVisAttributes(leadVis);
 
+  double lead1_xoff = 4.0 * 0.5 * 2.54 * cm + b1_dX*0.5; //Distance of thick lead brick from center
+
   // Place Type 1 Bricks on the -X and +X sides
-  new G4PVPlacement(nullptr, G4ThreeVector(-9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_MinusX", logicWorld, false, 0, fCheckOverlaps);
-  new G4PVPlacement(nullptr, G4ThreeVector( 9.5 * cm, 0.0, 0.0), logicBrickType1, "Brick_PlusX",  logicWorld, false, 1, fCheckOverlaps);
+  new G4PVPlacement(nullptr, G4ThreeVector(-lead1_xoff, 0.0, 0.0), logicBrickType1, "Brick_MinusX", logicWorld, false, 0, fCheckOverlaps);
+  new G4PVPlacement(nullptr, G4ThreeVector( lead1_xoff, 0.0, 0.0), logicBrickType1, "Brick_PlusX",  logicWorld, false, 1, fCheckOverlaps);
 
   // ==========================================
   // TYPE 2: Brick Type 2 (e.g., Front/Back Walls along Z)
   // ==========================================
-  G4double b2_dX = 14.0 * cm;  // Width
-  G4double b2_dY = 20.0 * cm;  // Height along Y (vertical)
-  G4double b2_dZ = 7.5 * cm;   // Thickness
+  G4double b2_dX = 4.0 * 2.54 * cm;  // Width
+  G4double b2_dY = 8.0 * 2.54 * cm;  // Height along Y (vertical)
+  G4double b2_dZ = 2.0 * 2.54 * cm;   // Thickness
 
   auto solidBrickType2 = new G4Box("BrickType2_Solid", 0.5 * b2_dX, 0.5 * b2_dY, 0.5 * b2_dZ);
   auto logicBrickType2 = new G4LogicalVolume(solidBrickType2, lead_mat, "BrickType2_LV");
@@ -192,7 +196,7 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
 
   // Define the Cylindrical "Cutter" for the hole
   // Arguments for G4Tubs: name, innerRadius, outerRadius, halfZ, startAngle, spanAngle
-  G4double holeRadius = 1.0 * cm; 
+  G4double holeRadius = 0.5 * 2.54 * cm; 
   G4double holeHalfZ  = (b2_dZ / 2.) * 1.5; // Make this slightly thicker than the brick's half-thickness (3.75 cm) to avoid surface artifacts
   
   auto solidCylHole = new G4Tubs("CylHole", 
@@ -218,15 +222,17 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
   auto logicBrickWithHole = new G4LogicalVolume(solidBrickWithHole, lead_mat, "BrickZ_CylHole_LV");
   logicBrickWithHole->SetVisAttributes(leadVis);
 
+  double lead2_zoff = b1_dZ*0.5 - b2_dZ*0.5; //Distance of thick lead brick from center
+
   // Place the perforated bricks along the Z-axis
-  new G4PVPlacement(nullptr,G4ThreeVector(0.0, 0.0, -7.5 * cm),logicBrickWithHole,"LeadBrick_Z_CylHole", 
+  new G4PVPlacement(nullptr,G4ThreeVector(0.0, 0.0, -lead2_zoff),logicBrickWithHole,"LeadBrick_Z_CylHole", 
                     logicWorld, 
                     false, 
                     2, 
                     fCheckOverlaps);
 
   new G4PVPlacement(nullptr, 
-                    G4ThreeVector(0.0, 0.0, 7.5 * cm), 
+                    G4ThreeVector(0.0, 0.0, lead2_zoff), 
                     logicBrickWithHole, 
                     "LeadBrick_Z_CylHole", 
                     logicWorld, 
@@ -234,6 +240,257 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
                     2, 
                     fCheckOverlaps);
 
+  // ==========================================
+  // Define z position used for scattering
+     G4double zplane = 25.0 * cm;
+  // ==========================================
+
+
+  // ==========================================
+  // Scattering Detectors: CeBr3 cylinders
+  // ==========================================
+  //Define detector dimensions (scintillator) (From Lee's notes)
+  G4double scat_rad = 9 * mm; //Radius of detector
+  G4double scat_halfz = 10 * mm; //Half the length
+  G4double scat_z = zplane; //z-offset from center 
+
+  //Get solid
+  auto solidCeBr3Det = new G4Tubs("CeBr3Det_Solid",
+                                   0.0,
+                                   scat_rad,
+                                   scat_halfz,
+                                   0.0,
+                                   360.0 * deg);
+
+  //Add logic
+  auto logicCeBr3Det = new G4LogicalVolume(solidCeBr3Det, cryst_scatt, "CeBr3Det_LV");
+
+  // Optional visual styling (e.g., cyan/teal so they stand out from red lead bricks)
+  auto detVis = new G4VisAttributes(G4Colour(0.0, 0.7, 0.8));
+  detVis->SetForceSolid(true);
+  logicCeBr3Det->SetVisAttributes(detVis);
+  
+
+  //Place scatterers
+
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, scat_z),
+                    logicCeBr3Det,
+                    "CeBr3Det_PlusZ",
+                    logicWorld,
+                    false,
+                    0,
+                    fCheckOverlaps);
+
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, -scat_z),
+                    logicCeBr3Det,
+                    "CeBr3Det_MinusZ",
+                    logicWorld,
+                    false,
+                    1,
+                    fCheckOverlaps);
+
+
+  //Create Al can around the CeBr3 detectors and the PMT glass
+  // (From Lee's notes)
+  G4double scat_alThick      = 0.1 * mm;
+  G4double scat_winThick     = 8.0 * mm;
+  G4double scat_winHalfZ     = 0.5 * scat_winThick;
+  G4double scat_winRadius    = scat_rad;      // Match crystal radius (or set to PMT window radius)
+
+  // make Al can sleeve
+  auto solidAlCan = new G4Tubs("CeBr3_AlCan_Solid",
+                               scat_rad,
+                               scat_rad + scat_alThick,
+                               scat_halfz,
+                               0.0,
+                               360.0 * deg);
+  auto logicAlCan = new G4LogicalVolume(solidAlCan, al_mat, "CeBr3_AlCan_LV");
+
+  //Set Al can colors
+  auto alVis = new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.5)); // Translucent silver/gray
+  alVis->SetForceSolid(true);
+  logicAlCan->SetVisAttributes(alVis);
+
+  //8 mm glass window of the PMT
+  auto solidGlassWin = new G4Tubs("PMT_GlassWin_Solid",
+                                  0.0,
+                                  scat_winRadius,
+                                  scat_winHalfZ,
+                                  0.0,
+                                  360.0 * deg);
+  auto logicGlassWin = new G4LogicalVolume(solidGlassWin, glass_mat, "PMT_GlassWin_LV");
+
+  //Set window colors
+  auto winVis = new G4VisAttributes(G4Colour(0.4, 0.8, 1.0, 0.4)); // Light cyan glass tint
+  winVis->SetForceSolid(true);
+  logicGlassWin->SetVisAttributes(winVis);
+
+
+  // Place Al cans and glass windows for both +Z and -Z detectors
+  // For the +Z detector (centered at +detZPos):
+  // Crystal spans [detZPos - detHalfZ, detZPos + detHalfZ].
+  // Glass window sits just past +detHalfZ, centered at (detZPos + detHalfZ + winHalfZ).
+  G4double plusWinZ = scat_z + scat_halfz + scat_winHalfZ;
+
+  //plus detector
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, scat_z),
+                    logicAlCan,
+                    "CeBr3_AlCan_PlusZ",
+                    logicWorld,
+                    false,
+                    0,
+                    fCheckOverlaps);
+
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, plusWinZ),
+                    logicGlassWin,
+                    "PMT_GlassWin_PlusZ",
+                    logicWorld,
+                    false,
+                    0,
+                    fCheckOverlaps);
+
+  //minus detector
+  G4double minusWinZ = -scat_z - scat_halfz - scat_winHalfZ;
+
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, -scat_z),
+                    logicAlCan,
+                    "CeBr3_AlCan_MinusZ",
+                    logicWorld,
+                    false,
+                    1,
+                    fCheckOverlaps);
+
+  new G4PVPlacement(nullptr,
+                    G4ThreeVector(0.0, 0.0, minusWinZ),
+                    logicGlassWin,
+                    "PMT_GlassWin_MinusZ",
+                    logicWorld,
+                    false,
+                    1,
+                    fCheckOverlaps);
+
+
+// ==========================================
+  // Analyzer Detectors: NaI(Tl) cylinders
+  // ==========================================
+
+  G4double analyze_rad = 9.0*cm; //assume some radius for all analyzers, measured from (0,0,0)
+
+  //Define detector dimensions (scintillator) (From Lee's notes)
+  G4double analyz_cylrad = 12.5 * mm; //Radius of detector
+  G4double analyz_halfz = 12.5 * mm; //Half the length
+
+
+  //Get solid
+  auto solidNaIDet = new G4Tubs("NaIDet_Solid",
+                                   0.0,
+                                   analyz_cylrad,
+                                   analyz_halfz,
+                                   0.0,
+                                   360.0 * deg);
+
+  //Add logic
+  auto logicNaIDet = new G4LogicalVolume(solidNaIDet, cryst_analysis, "NaIDet_LV");
+
+  // Optional visual styling (e.g., brown so they stand out from red lead bricks)
+  auto NaIdetVis = new G4VisAttributes(G4Colour(0.45, 0.25, 0.0));
+  NaIdetVis->SetForceSolid(true);
+  logicNaIDet->SetVisAttributes(NaIdetVis);
+
+  //Get positions
+  //Calculate positions from phi and then rotate using phi
+  G4double NaIX = 0.0 * cm;
+  G4double NaIY = 0.0 * cm;
+
+  //Positive side
+  //G4double NaI_phi = 45 * deg;
+  //Number of detectors and the angular increments
+  const G4int nNaIDets_e = 7;
+  const G4double startPhi_NaI_e = 0.0 * deg;
+  const G4double dPhi_NaI_e     = 30.0 * deg;
+  
+// Target point the cylinder axis aims through (adjust Z if cyan center differs from zplane)
+  G4ThreeVector targetPos_e(0.0, 0.0, zplane);
+  G4ThreeVector localZAxis_e(0.0, 0.0, 1.0);
+
+  for (G4int i = 0; i < nNaIDets_e; ++i) {
+    G4double NaI_phi = startPhi_NaI_e + i * dPhi_NaI_e; // 0, 45, 90, 135, 180 deg
+
+    G4double NaIX = analyze_rad * std::cos(NaI_phi);
+    G4double NaIY = analyze_rad * std::sin(NaI_phi);
+    G4ThreeVector NaIdetPos(NaIX, NaIY, zplane);
+
+    G4ThreeVector dirToTarget = (targetPos_e - NaIdetPos).unit();
+
+    auto rotToTarget = new G4RotationMatrix();
+    G4ThreeVector rotAxis = localZAxis_e.cross(dirToTarget);
+    G4double rotAngle = localZAxis_e.angle(dirToTarget);
+
+    if (rotAxis.mag() > 1e-9) {
+      rotToTarget->rotate(rotAngle, rotAxis.unit());
+    } else if (dirToTarget.z() < 0.0) {
+      rotToTarget->rotateX(180.0 * deg);
+    }
+
+    new G4PVPlacement(rotToTarget,
+                      NaIdetPos,
+                      logicNaIDet,
+                      "NaIDet_" + std::to_string(static_cast<int>(NaI_phi / deg)) + "deg",
+                      logicWorld,
+                      false,
+                      i,
+                      fCheckOverlaps);
+  }
+
+
+
+  //Negative side
+  //G4double NaI_phi = 45 * deg;
+  //Number of detectors and the angular increments
+  const G4int nNaIDets_w = 1;
+  const G4double startPhi_NaI_w = 0.0 * deg;
+  const G4double dPhi_NaI_w     = 45.0 * deg;
+  
+// Target point the cylinder axis aims through (adjust Z if cyan center differs from zplane)
+  G4ThreeVector targetPos_w(0.0, 0.0, -zplane);
+  G4ThreeVector localZAxis_w(0.0, 0.0, 1.0);
+
+  for (G4int i = 0; i < nNaIDets_w; ++i) {
+    G4double NaI_phi = startPhi_NaI_w + i * dPhi_NaI_w; // 0, 45, 90, 135, 180 deg
+
+    G4double NaIX = analyze_rad * std::cos(NaI_phi);
+    G4double NaIY = analyze_rad * std::sin(NaI_phi);
+    G4ThreeVector NaIdetPos(NaIX, NaIY, -zplane);
+
+    G4ThreeVector dirToTarget = (targetPos_w - NaIdetPos).unit();
+
+    auto rotToTarget = new G4RotationMatrix();
+    G4ThreeVector rotAxis = localZAxis_w.cross(dirToTarget);
+    G4double rotAngle = localZAxis_w.angle(dirToTarget);
+
+    if (rotAxis.mag() > 1e-9) {
+      rotToTarget->rotate(rotAngle, rotAxis.unit());
+    } else if (dirToTarget.z() < 0.0) {
+      rotToTarget->rotateX(180.0 * deg);
+    }
+
+    new G4PVPlacement(rotToTarget,
+                      NaIdetPos,
+                      logicNaIDet,
+                      "NaIDet_" + std::to_string(static_cast<int>(NaI_phi / deg)) + "deg",
+                      logicWorld,
+                      false,
+                      i,
+                      fCheckOverlaps);
+  }
+
+
+  //BEGIN OLD STUFF FROM PET SETUP
 
   //
   // ring
@@ -315,7 +572,7 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
   //
   // patient
   //
-  G4double patient_radius = 8 * cm;
+ /* G4double patient_radius = 8 * cm;
   G4double patient_dZ = 10 * cm;
   G4Material* patient_mat = nist->FindOrBuildMaterial("G4_BRAIN_ICRP");
 
@@ -335,7 +592,7 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
                     logicWorld,  // its mother  volume
                     false,  // no boolean operation
                     0,  // copy number
-                    fCheckOverlaps);  // checking overlaps
+                    fCheckOverlaps);  // checking overlaps*/
 
   // Visualization attributes
   //
@@ -368,7 +625,7 @@ void DetectorConstruction::ConstructSDandField()
 
   // declare crystal as a MultiFunctionalDetector scorer
   //
-  auto cryst = new G4MultiFunctionalDetector("crystal");
+ /* auto cryst = new G4MultiFunctionalDetector("crystal");
   G4SDManager::GetSDMpointer()->AddNewDetector(cryst);
   G4VPrimitiveScorer* primitiv1 = new G4PSEnergyDeposit("edep");
   cryst->RegisterPrimitive(primitiv1);
@@ -380,7 +637,7 @@ void DetectorConstruction::ConstructSDandField()
   G4SDManager::GetSDMpointer()->AddNewDetector(patient);
   G4VPrimitiveScorer* primitiv2 = new G4PSDoseDeposit("dose");
   patient->RegisterPrimitive(primitiv2);
-  SetSensitiveDetector("PatientLV", patient);
+  SetSensitiveDetector("PatientLV", patient);*/
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
