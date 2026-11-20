@@ -20,7 +20,7 @@ jobs:
         env:
           G4_REPO: crafter312/geant4-orthoposlifetime
         run: |
-          SHA=$(git ls-remote "https://github.com/${G4_REPO}.git" refs/heads/main | awk '{print $1}')
+          SHA=$(git ls-remote "https://github.com/${G4_REPO}.git" refs/heads/master | awk '{print $1}')
           test -n "$SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
