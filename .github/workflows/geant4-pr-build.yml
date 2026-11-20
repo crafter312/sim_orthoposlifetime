@@ -27,13 +27,15 @@ jobs:
   build:
     needs: get-g4-sha
     runs-on: ubuntu-24.04
-    env:
-      G4_SRC_DIR: ${{ github.workspace }}/geant4-src
-      G4_BUILD_DIR: ${{ github.workspace }}/geant4-build
-      G4_INSTALL_DIR: ${{ runner.temp }}/geant4-install
-      SIM_BUILD_DIR: ${{ github.workspace }}/sim-build
 
     steps:
+      - name: Configure paths
+        run: |
+          echo "G4_SRC_DIR=${{ github.workspace }}/geant4-src" >> "$GITHUB_ENV"
+          echo "G4_BUILD_DIR=${{ github.workspace }}/geant4-build" >> "$GITHUB_ENV"
+          echo "G4_INSTALL_DIR=${{ runner.temp }}/geant4-install" >> "$GITHUB_ENV"
+          echo "SIM_BUILD_DIR=${{ github.workspace }}/sim-build" >> "$GITHUB_ENV"
+
       - name: Check out simulation repository
         uses: actions/checkout@v4
 
