@@ -43,6 +43,7 @@
 #include "G4Tubs.hh"
 #include "G4SubtractionSolid.hh"
 #include "G4VisAttributes.hh"
+#include "DetectorModules.hh" //custom class that creates the detector assemblies
 
 namespace B3
 {
@@ -143,8 +144,8 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   //
   // World
   //
-  G4double world_sizeXY = 100 * cm; //100 cm world size (length of side)
-  G4double world_sizeZ = 100 * cm; //100 cm world size (length of side)
+  G4double world_sizeXY = 50 * cm; //100 cm world size (length of side)
+  G4double world_sizeZ = 80 * cm; //100 cm world size (length of side)
 
   auto solidWorld =
     new G4Box("World",  // its name
@@ -241,7 +242,7 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
                     fCheckOverlaps);
 
   // ==========================================
-  // Define z position used for scattering
+  // Define z position used for scattering, this should remain constant
      G4double zplane = 25.0 * cm;
   // ==========================================
 
@@ -249,170 +250,56 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
   // ==========================================
   // Scattering Detectors: CeBr3 cylinders
   // ==========================================
-  //Define detector dimensions (scintillator) (From Lee's notes)
-  G4double scat_rad = 9 * mm; //Radius of detector
-  G4double scat_halfz = 10 * mm; //Half the length
+  //Generate the detectors from DetectorModules
+
+  G4LogicalVolume* logicScatAssembly = DetectorModules::BuildAnalyzerAssemblyLV(
+    "scatter",cryst_scatt, al_mat, glass_mat, default_mat, DetectorModules::CeBr3_25_AnalyzerConfig);
+
+
+  //Place the scattering detectors
   G4double scat_z = zplane; //z-offset from center 
 
-  //Get solid
-  auto solidCeBr3Det = new G4Tubs("CeBr3Det_Solid",
-                                   0.0,
-                                   scat_rad,
-                                   scat_halfz,
-                                   0.0,
-                                   360.0 * deg);
+  //Detector upstream/downstream at z = +zScatPos (target is at -Z relative to it -> flip 180 deg)
+  auto rotFlipZ = new G4RotationMatrix();
+  rotFlipZ->rotateX(180.0 * deg);
 
-  //Add logic
-  auto logicCeBr3Det = new G4LogicalVolume(solidCeBr3Det, cryst_scatt, "CeBr3Det_LV");
+  //EAST (positive)
+  new G4PVPlacement(rotFlipZ,
+                  G4ThreeVector(0.0, 0.0, scat_z),
+                  logicScatAssembly,
+                  "ScatDet_Zplus",
+                  logicWorld,
+                  false,
+                  0,
+                  fCheckOverlaps);
 
-  // Optional visual styling (e.g., cyan/teal so they stand out from red lead bricks)
-  auto detVis = new G4VisAttributes(G4Colour(0.0, 0.7, 0.8));
-  detVis->SetForceSolid(true);
-  logicCeBr3Det->SetVisAttributes(detVis);
-  
-
-  //Place scatterers
-
+  //WEST (negative) needs to be flipped
   new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, scat_z),
-                    logicCeBr3Det,
-                    "CeBr3Det_PlusZ",
-                    logicWorld,
-                    false,
-                    0,
-                    fCheckOverlaps);
-
-  new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, -scat_z),
-                    logicCeBr3Det,
-                    "CeBr3Det_MinusZ",
-                    logicWorld,
-                    false,
-                    1,
-                    fCheckOverlaps);
-
-
-  //Create Al can around the CeBr3 detectors and the PMT glass
-  // (From Lee's notes)
-  G4double scat_alThick      = 0.1 * mm;
-  G4double scat_winThick     = 8.0 * mm;
-  G4double scat_winHalfZ     = 0.5 * scat_winThick;
-  G4double scat_winRadius    = scat_rad;      // Match crystal radius (or set to PMT window radius)
-
-  // make Al can sleeve
-  auto solidAlCan = new G4Tubs("CeBr3_AlCan_Solid",
-                               scat_rad,
-                               scat_rad + scat_alThick,
-                               scat_halfz,
-                               0.0,
-                               360.0 * deg);
-  auto logicAlCan = new G4LogicalVolume(solidAlCan, al_mat, "CeBr3_AlCan_LV");
-
-  //Set Al can colors
-  auto alVis = new G4VisAttributes(G4Colour(0.7, 0.7, 0.75, 0.5)); // Translucent silver/gray
-  alVis->SetForceSolid(true);
-  logicAlCan->SetVisAttributes(alVis);
-
-  //8 mm glass window of the PMT
-  auto solidGlassWin = new G4Tubs("PMT_GlassWin_Solid",
-                                  0.0,
-                                  scat_winRadius,
-                                  scat_winHalfZ,
-                                  0.0,
-                                  360.0 * deg);
-  auto logicGlassWin = new G4LogicalVolume(solidGlassWin, glass_mat, "PMT_GlassWin_LV");
-
-  //Set window colors
-  auto winVis = new G4VisAttributes(G4Colour(0.4, 0.8, 1.0, 0.4)); // Light cyan glass tint
-  winVis->SetForceSolid(true);
-  logicGlassWin->SetVisAttributes(winVis);
-
-
-  // Place Al cans and glass windows for both +Z and -Z detectors
-  // For the +Z detector (centered at +detZPos):
-  // Crystal spans [detZPos - detHalfZ, detZPos + detHalfZ].
-  // Glass window sits just past +detHalfZ, centered at (detZPos + detHalfZ + winHalfZ).
-  G4double plusWinZ = scat_z + scat_halfz + scat_winHalfZ;
-
-  //plus detector
-  new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, scat_z),
-                    logicAlCan,
-                    "CeBr3_AlCan_PlusZ",
-                    logicWorld,
-                    false,
-                    0,
-                    fCheckOverlaps);
-
-  new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, plusWinZ),
-                    logicGlassWin,
-                    "PMT_GlassWin_PlusZ",
-                    logicWorld,
-                    false,
-                    0,
-                    fCheckOverlaps);
-
-  //minus detector
-  G4double minusWinZ = -scat_z - scat_halfz - scat_winHalfZ;
-
-  new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, -scat_z),
-                    logicAlCan,
-                    "CeBr3_AlCan_MinusZ",
-                    logicWorld,
-                    false,
-                    1,
-                    fCheckOverlaps);
-
-  new G4PVPlacement(nullptr,
-                    G4ThreeVector(0.0, 0.0, minusWinZ),
-                    logicGlassWin,
-                    "PMT_GlassWin_MinusZ",
-                    logicWorld,
-                    false,
-                    1,
-                    fCheckOverlaps);
-
+                  G4ThreeVector(0.0, 0.0, -scat_z),
+                  logicScatAssembly,
+                  "ScatDet_Zminus",
+                  logicWorld,
+                  false,
+                  1,
+                  fCheckOverlaps);
+ 
 
 // ==========================================
   // Analyzer Detectors: NaI(Tl) cylinders
   // ==========================================
+  //Generate the detectors from DetectorModules
+
+  G4LogicalVolume* logicAnalysAssembly = DetectorModules::BuildAnalyzerAssemblyLV(
+    "analyzer",cryst_analysis, al_mat, glass_mat, default_mat, DetectorModules::NaIAnalyzerConfig);
 
   G4double analyze_rad = 9.0*cm; //assume some radius for all analyzers, measured from (0,0,0)
 
-  //Define detector dimensions (scintillator) (From Lee's notes)
-  G4double analyz_cylrad = 12.5 * mm; //Radius of detector
-  G4double analyz_halfz = 12.5 * mm; //Half the length
-
-
-  //Get solid
-  auto solidNaIDet = new G4Tubs("NaIDet_Solid",
-                                   0.0,
-                                   analyz_cylrad,
-                                   analyz_halfz,
-                                   0.0,
-                                   360.0 * deg);
-
-  //Add logic
-  auto logicNaIDet = new G4LogicalVolume(solidNaIDet, cryst_analysis, "NaIDet_LV");
-
-  // Optional visual styling (e.g., brown so they stand out from red lead bricks)
-  auto NaIdetVis = new G4VisAttributes(G4Colour(0.45, 0.25, 0.0));
-  NaIdetVis->SetForceSolid(true);
-  logicNaIDet->SetVisAttributes(NaIdetVis);
-
-  //Get positions
-  //Calculate positions from phi and then rotate using phi
-  G4double NaIX = 0.0 * cm;
-  G4double NaIY = 0.0 * cm;
-
-  //Positive side
+  //Positive side EAST
   //G4double NaI_phi = 45 * deg;
   //Number of detectors and the angular increments
-  const G4int nNaIDets_e = 7;
+  const G4int nNaIDets_e = 5;
   const G4double startPhi_NaI_e = 0.0 * deg;
-  const G4double dPhi_NaI_e     = 30.0 * deg;
+  const G4double dPhi_NaI_e     = 45.0 * deg;
   
 // Target point the cylinder axis aims through (adjust Z if cyan center differs from zplane)
   G4ThreeVector targetPos_e(0.0, 0.0, zplane);
@@ -432,15 +319,17 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
     G4double rotAngle = localZAxis_e.angle(dirToTarget);
 
     if (rotAxis.mag() > 1e-9) {
-      rotToTarget->rotate(rotAngle, rotAxis.unit());
+      rotToTarget->rotate(-rotAngle, rotAxis.unit());
     } else if (dirToTarget.z() < 0.0) {
       rotToTarget->rotateX(180.0 * deg);
     }
 
+    const G4int degLabel = static_cast<G4int>(std::lround(NaI_phi / deg));
+
     new G4PVPlacement(rotToTarget,
                       NaIdetPos,
-                      logicNaIDet,
-                      "NaIDet_" + std::to_string(static_cast<int>(NaI_phi / deg)) + "deg",
+                      logicAnalysAssembly,
+                      "NaIAssembly_" + std::to_string(degLabel) + "deg",
                       logicWorld,
                       false,
                       i,
@@ -449,7 +338,7 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
 
 
 
-  //Negative side
+  //Negative side WEST
   //G4double NaI_phi = 45 * deg;
   //Number of detectors and the angular increments
   const G4int nNaIDets_w = 1;
@@ -474,15 +363,17 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
     G4double rotAngle = localZAxis_w.angle(dirToTarget);
 
     if (rotAxis.mag() > 1e-9) {
-      rotToTarget->rotate(rotAngle, rotAxis.unit());
+      rotToTarget->rotate(-rotAngle, rotAxis.unit());
     } else if (dirToTarget.z() < 0.0) {
       rotToTarget->rotateX(180.0 * deg);
     }
 
+    const G4int degLabel = static_cast<G4int>(std::lround(NaI_phi / deg));
+
     new G4PVPlacement(rotToTarget,
                       NaIdetPos,
-                      logicNaIDet,
-                      "NaIDet_" + std::to_string(static_cast<int>(NaI_phi / deg)) + "deg",
+                      logicAnalysAssembly,
+                      "NaIAssembly_" + std::to_string(degLabel) + "deg",
                       logicWorld,
                       false,
                       i,
