@@ -1,0 +1,87 @@
+name: Build Simulation with Custom Geant4
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  get-g4-sha:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.g4_sha.outputs.sha }}
+    steps:
+      - name: Get latest commit SHA of Geant4 fork main branch
+        id: g4_sha
+        env:
+          G4_REPO: crafter312/geant4-orthoposlifetime
+        run: |
+          SHA=$(git ls-remote "https://github.com/${G4_REPO}.git" refs/heads/master | awk '{print $1}')
+          test -n "$SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: get-g4-sha
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Configure paths
+        run: |
+          echo "G4_SRC_DIR=${{ github.workspace }}/geant4-src" >> "$GITHUB_ENV"
+          echo "G4_BUILD_DIR=${{ github.workspace }}/geant4-build" >> "$GITHUB_ENV"
+          echo "G4_INSTALL_DIR=${{ runner.temp }}/geant4-install" >> "$GITHUB_ENV"
+          echo "SIM_BUILD_DIR=${{ github.workspace }}/sim-build" >> "$GITHUB_ENV"
+
+      - name: Check out simulation repository
+        uses: actions/checkout@v4
+
+      - name: Check out custom Geant4 fork at resolved SHA
+        uses: actions/checkout@v4
+        with:
+          repository: crafter312/geant4-orthoposlifetime
+          ref: ${{ needs.get-g4-sha.outputs.sha }}
+          path: geant4-src
+
+      - name: Install system build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            libexpat1-dev
+
+      - name: Restore cached Geant4 installation
+        id: cache-g4
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.G4_INSTALL_DIR }}
+          key: g4-custom-${{ runner.os }}-ninja-${{ hashFiles('.github/workflows/geant4-pr-build.yml') }}-${{ needs.get-g4-sha.outputs.sha }}-v1
+          restore-keys: |
+            g4-custom-${{ runner.os }}-ninja-${{ hashFiles('.github/workflows/geant4-pr-build.yml') }}-
+
+      - name: Build and install custom Geant4
+        if: steps.cache-g4.outputs.cache-hit != 'true'
+        run: |
+          cmake -G Ninja -S "${{ env.G4_SRC_DIR }}" -B "${{ env.G4_BUILD_DIR }}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${{ env.G4_INSTALL_DIR }}" \
+            -DGEANT4_BUILD_MULTITHREADED=ON \
+            -DGEANT4_INSTALL_DATA=OFF
+          cmake --build "${{ env.G4_BUILD_DIR }}" --parallel
+          cmake --install "${{ env.G4_BUILD_DIR }}"
+          rm -rf "${{ env.G4_BUILD_DIR }}" "${{ env.G4_SRC_DIR }}"
+
+      - name: Configure simulation
+        run: |
+          cmake -G Ninja -S "${{ github.workspace }}" -B "${{ env.SIM_BUILD_DIR }}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGeant4_DIR="${{ env.G4_INSTALL_DIR }}/lib/cmake/Geant4"
+
+      - name: Build simulation
+        run: |
+          cmake --build "${{ env.SIM_BUILD_DIR }}" --parallel
