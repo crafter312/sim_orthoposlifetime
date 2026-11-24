@@ -1,0 +1,7 @@
+id,module,side,front_distance_cm,theta_deg,phi_deg
+0,NaI,E,9.0,90.0,0.0
+1,NaI,E,9.0,90.0,45.0
+2,NaI,E,9.0,90.0,90.0
+3,NaI,E,9.0,90.0,135.0
+4,NaI,E,9.0,90.0,180.0
+5,NaI,W,9.0,90.0,0.0

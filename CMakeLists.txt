@@ -46,3 +46,11 @@ foreach(_script ${PALS_SCRIPTS})
     COPYONLY
     )
 endforeach()
+
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/config")
+
+configure_file(
+  "${PROJECT_SOURCE_DIR}/config/analyzers.csv"
+  "${PROJECT_BINARY_DIR}/config/analyzers.csv"
+  COPYONLY
+)

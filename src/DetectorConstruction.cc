@@ -27,7 +27,7 @@
 /// \brief Implementation of the B3::DetectorConstruction class
 
 #include "DetectorConstruction.hh"
-
+#include <vector>
 #include "G4Box.hh"
 #include "G4LogicalVolume.hh"
 #include "G4MultiFunctionalDetector.hh"
@@ -44,6 +44,12 @@
 #include "G4SubtractionSolid.hh"
 #include "G4VisAttributes.hh"
 #include "DetectorModules.hh" //custom class that creates the detector assemblies
+#include "AnalyzerPlacement.hh"
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <stdexcept>
+#include <set>
 
 namespace B3
 {
@@ -293,94 +299,189 @@ auto leadVis = new G4VisAttributes(G4Colour(0.8, 0.2, 0.2)); // Red color
     "analyzer",cryst_analysis, al_mat, glass_mat, default_mat, DetectorModules::NaIAnalyzerConfig);
 
   G4double analyze_rad = 9.0*cm; //assume some radius for all analyzers, measured from (0,0,0)
+  std::vector<AnalyzerPlacement> analyzerPlacements;
+  std::set<G4int> analyzerIds;
+  std::ifstream analyzerFile("config/analyzers.csv");
 
-  //Positive side EAST
-  //G4double NaI_phi = 45 * deg;
-  //Number of detectors and the angular increments
-  const G4int nNaIDets_e = 5;
-  const G4double startPhi_NaI_e = 0.0 * deg;
-  const G4double dPhi_NaI_e     = 45.0 * deg;
-  
-// Target point the cylinder axis aims through (adjust Z if cyan center differs from zplane)
-  G4ThreeVector targetPos_e(0.0, 0.0, zplane);
-  G4ThreeVector localZAxis_e(0.0, 0.0, 1.0);
+  if (analyzerFile.is_open()) {
+    std::string line;
 
-  for (G4int i = 0; i < nNaIDets_e; ++i) {
-    G4double NaI_phi = startPhi_NaI_e + i * dPhi_NaI_e; // 0, 45, 90, 135, 180 deg
+    // Read the column names.
+    std::getline(analyzerFile, line);
+    G4cout << "CSV header: " << line << G4endl;
 
-    G4double NaIX = analyze_rad * std::cos(NaI_phi);
-    G4double NaIY = analyze_rad * std::sin(NaI_phi);
-    G4ThreeVector NaIdetPos(NaIX, NaIY, zplane);
+    // Read each remaining row.
+    while (std::getline(analyzerFile, line)) {
+      if (line.empty()) {
+        continue;
+      }
 
-    G4ThreeVector dirToTarget = (targetPos_e - NaIdetPos).unit();
+      std::istringstream row(line);
 
-    auto rotToTarget = new G4RotationMatrix();
-    G4ThreeVector rotAxis = localZAxis_e.cross(dirToTarget);
-    G4double rotAngle = localZAxis_e.angle(dirToTarget);
+      std::string idText;
+      std::string moduleText;
+      std::string sideText;
+      std::string distanceText;
+      std::string thetaText;
+      std::string phiText;
 
-    if (rotAxis.mag() > 1e-9) {
-      rotToTarget->rotate(-rotAngle, rotAxis.unit());
-    } else if (dirToTarget.z() < 0.0) {
-      rotToTarget->rotateX(180.0 * deg);
+      std::getline(row, idText, ',');
+      std::getline(row, moduleText, ',');
+      std::getline(row, sideText, ',');
+      std::getline(row, distanceText, ',');
+      std::getline(row, thetaText, ',');
+      std::getline(row, phiText);
+
+      const AnalyzerPlacement placement{
+        std::stoi(idText),
+        moduleText,
+        sideText,
+        std::stod(distanceText) * cm,
+        std::stod(thetaText) * deg,
+        std::stod(phiText) * deg
+      };
+
+      if (placement.distance <= 0.0) {
+        G4cerr << "Analyzer " << placement.id
+              << ": distance must be positive." << G4endl;
+
+        throw std::runtime_error("Invalid analyzer distance");
+      }
+    
+      if (analyzerIds.count(placement.id) > 0) {
+        G4cerr << "Duplicate analyzer ID: "
+               << placement.id << G4endl;
+        throw std::runtime_error(
+          "Duplicate analyzer ID: " + std::to_string(placement.id)
+        );
+      }
+
+      analyzerIds.insert(placement.id);
+      analyzerPlacements.push_back(placement);
+
+      G4cout << "Read analyzer " << placement.id
+            << ": module = " << placement.module
+            << ", distance (cm) = " << placement.distance / cm
+            << ", theta (deg) = " << placement.theta / deg
+            << G4endl;
     }
-
-    const G4int degLabel = static_cast<G4int>(std::lround(NaI_phi / deg));
-
-    new G4PVPlacement(rotToTarget,
-                      NaIdetPos,
-                      logicAnalysAssembly,
-                      "NaIAssembly_" + std::to_string(degLabel) + "deg",
-                      logicWorld,
-                      false,
-                      i,
-                      fCheckOverlaps);
+  } else {
+    G4cout << "Could not open analyzer configuration file." << G4endl;
+  }
+  if (analyzerPlacements.empty()) {
+    throw std::runtime_error(
+      "No analyzers loaded from config/analyzers.csv"
+    );
   }
 
-
-
-  //Negative side WEST
-  //G4double NaI_phi = 45 * deg;
-  //Number of detectors and the angular increments
-  const G4int nNaIDets_w = 1;
-  const G4double startPhi_NaI_w = 0.0 * deg;
-  const G4double dPhi_NaI_w     = 45.0 * deg;
-  
-// Target point the cylinder axis aims through (adjust Z if cyan center differs from zplane)
-  G4ThreeVector targetPos_w(0.0, 0.0, -zplane);
-  G4ThreeVector localZAxis_w(0.0, 0.0, 1.0);
-
-  for (G4int i = 0; i < nNaIDets_w; ++i) {
-    G4double NaI_phi = startPhi_NaI_w + i * dPhi_NaI_w; // 0, 45, 90, 135, 180 deg
-
-    G4double NaIX = analyze_rad * std::cos(NaI_phi);
-    G4double NaIY = analyze_rad * std::sin(NaI_phi);
-    G4ThreeVector NaIdetPos(NaIX, NaIY, -zplane);
-
-    G4ThreeVector dirToTarget = (targetPos_w - NaIdetPos).unit();
-
-    auto rotToTarget = new G4RotationMatrix();
-    G4ThreeVector rotAxis = localZAxis_w.cross(dirToTarget);
-    G4double rotAngle = localZAxis_w.angle(dirToTarget);
-
-    if (rotAxis.mag() > 1e-9) {
-      rotToTarget->rotate(-rotAngle, rotAxis.unit());
-    } else if (dirToTarget.z() < 0.0) {
-      rotToTarget->rotateX(180.0 * deg);
-    }
-
-    const G4int degLabel = static_cast<G4int>(std::lround(NaI_phi / deg));
-
-    new G4PVPlacement(rotToTarget,
-                      NaIdetPos,
-                      logicAnalysAssembly,
-                      "NaIAssembly_" + std::to_string(degLabel) + "deg",
-                      logicWorld,
-                      false,
-                      i,
-                      fCheckOverlaps);
+  for (const AnalyzerPlacement& firstAnalyzer : analyzerPlacements) {
+  if (firstAnalyzer.module != "NaI") {
+    throw std::runtime_error(
+      "This placement currently supports only NaI modules"
+    );
   }
 
+  if (firstAnalyzer.side != "E" && firstAnalyzer.side != "W") {
+    throw std::runtime_error(
+      "Analyzer side must be E or W"
+    );
+  }
+  // CSV distance: scatterer center to analyzer front face.
+  const G4double frontOffset =
+    DetectorModules::NaIAnalyzerConfig.halfZ
+    + DetectorModules::NaIAnalyzerConfig.alThick;
 
+  const G4double centerDistance =
+    firstAnalyzer.distance + frontOffset;
+
+  const G4double offsetX =
+    centerDistance * std::sin(firstAnalyzer.theta)
+                          * std::cos(firstAnalyzer.phi);
+
+  const G4double offsetY =
+    centerDistance * std::sin(firstAnalyzer.theta)
+                          * std::sin(firstAnalyzer.phi);
+
+  const G4double offsetZ =
+    centerDistance * std::cos(firstAnalyzer.theta);
+
+  G4double scattererZ = zplane;
+
+  if (firstAnalyzer.side == "W") {
+    scattererZ = -zplane;
+  }
+
+  const G4ThreeVector scattererPosition(0.0, 0.0, scattererZ);
+
+  const G4ThreeVector analyzerOffset(offsetX, offsetY, offsetZ);
+
+  const G4ThreeVector analyzerPosition =
+    scattererPosition + analyzerOffset;
+
+  G4cout << "Analyzer " << firstAnalyzer.id
+       << ": position (cm) = "
+       << analyzerPosition / cm << G4endl; 
+  G4cout << "Analyzers loaded: "
+       << analyzerPlacements.size() << G4endl;
+  const G4ThreeVector directionToScatterer =
+    (scattererPosition - analyzerPosition).unit();
+  
+  G4cout << "Direction to scatterer = "
+       << directionToScatterer << G4endl;
+
+  const G4ThreeVector localFront(0.0, 0.0, 1.0);
+
+  const G4ThreeVector rotationAxis =
+    localFront.cross(directionToScatterer);
+
+  const G4double rotationAngle =
+    localFront.angle(directionToScatterer);
+    
+  G4cout << "Rotation axis = " << rotationAxis
+       << ", angle (deg) = " << rotationAngle / deg
+       << G4endl;
+
+  G4RotationMatrix analyzerRotation;
+
+  if (rotationAxis.mag() > 1e-9) {
+    analyzerRotation.rotate(
+      rotationAngle,
+      rotationAxis.unit()
+    );
+  } else if (directionToScatterer.z() < 0.0) {
+    analyzerRotation.rotateX(180.0 * deg);
+  }
+  const G4ThreeVector rotatedFront =
+    analyzerRotation * localFront;
+  const G4ThreeVector frontFacePosition =
+    analyzerPosition + frontOffset * rotatedFront;
+
+  const G4double frontFaceDistance =
+    (frontFacePosition - scattererPosition).mag();
+
+  G4cout << "Analyzer " << firstAnalyzer.id
+        << ": front-face distance (cm) = "
+        << frontFaceDistance / cm << G4endl;
+  G4cout << "Rotated front = "
+         << rotatedFront << G4endl;
+
+  const G4Transform3D analyzerTransform(
+    analyzerRotation,
+    analyzerPosition
+  );
+
+  new G4PVPlacement(
+    analyzerTransform,
+    logicAnalysAssembly,
+    "ConfiguredAnalyzer_" + firstAnalyzer.side
+      + "_" + std::to_string(firstAnalyzer.id),
+    logicWorld,
+    false,
+    firstAnalyzer.id,
+    fCheckOverlaps
+  );
+
+}  // Closes the loop over CSV analyzers.
   //BEGIN OLD STUFF FROM PET SETUP
 
   //
